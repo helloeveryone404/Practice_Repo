@@ -15,8 +15,6 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
-RUN chown -R test_user:test_group /app
-
 COPY APIpractice.py ./
 
 ENV PATH="/app/.venv/bin:$PATH"
