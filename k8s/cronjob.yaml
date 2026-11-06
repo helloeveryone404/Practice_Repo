@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: practice-repo-daily
+spec:
+  schedule: "0 6 * * *"            # minute hour day-of-month month day-of-week → every day at 06:00
+  timeZone: "UTC"                  # interpret the schedule in UTC (otherwise the controller's local time)
+  concurrencyPolicy: Forbid        # skip a run if the previous one is still going
+  startingDeadlineSeconds: 300     # if a run is missed by more than 5 minutes, skip it instead of starting late
+  successfulJobsHistoryLimit: 3    # keep the last 3 successful Jobs (and their pods/logs)
+  failedJobsHistoryLimit: 1        # keep the last 1 failed Job
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false   # the script never calls the Kubernetes API, so don't mount an API token
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999         # test_user
+            runAsGroup: 999        # test_group
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: report
+              image: practice-repo:0.1.0
+              imagePullPolicy: IfNotPresent
+              envFrom:
+                - configMapRef:
+                    name: practice-repo-config   # created by job.yaml
+              env:
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-token
+                      key: GITHUB_TOKEN
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                  ephemeral-storage: 50Mi
+                limits:
+                  memory: 256Mi
+                  ephemeral-storage: 100Mi
+          volumes:
+            - name: data
+              emptyDir: {}
