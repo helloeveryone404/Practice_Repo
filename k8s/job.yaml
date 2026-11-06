@@ -1,0 +1,56 @@
+# Settings for the report container, loaded as environment variables.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: practice-repo-config
+data:
+  TZ: "UTC"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: practice-repo-report
+spec:
+  backoffLimit: 2              # retry a failed pod at most 2 times
+  activeDeadlineSeconds: 600   # give up if the whole Job runs longer than 10 minutes
+  template:
+    spec:
+      restartPolicy: Never     # a failed pod is replaced by a new one, not restarted in place
+      automountServiceAccountToken: false   # the script never calls the Kubernetes API, so don't mount an API token
+      securityContext:
+        runAsNonRoot: true     # refuse to start if the container would run as root
+        runAsUser: 999         # test_user, from: docker run --rm --entrypoint id practice-repo:0.1.0
+        runAsGroup: 999        # test_group
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: report
+          image: practice-repo:0.1.0
+          imagePullPolicy: IfNotPresent   # use the image loaded with kind; never try to pull it
+          envFrom:
+            - configMapRef:
+                name: practice-repo-config
+          env:
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-token
+                  key: GITHUB_TOKEN
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data             # the script writes summary.csv here
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 50Mi
+            limits:
+              memory: 256Mi
+              ephemeral-storage: 100Mi
+      volumes:
+        - name: data
+          emptyDir: {}
