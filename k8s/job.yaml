@@ -16,6 +16,7 @@ spec:
   template:
     spec:
       restartPolicy: Never     # a failed pod is replaced by a new one, not restarted in place
+      automountServiceAccountToken: false   # the script never calls the Kubernetes API, so don't mount an API token
       securityContext:
         runAsNonRoot: true     # refuse to start if the container would run as root
         runAsUser: 999         # test_user, from: docker run --rm --entrypoint id practice-repo:0.1.0
@@ -46,8 +47,10 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 50Mi
             limits:
               memory: 256Mi
+              ephemeral-storage: 100Mi
       volumes:
         - name: data
           emptyDir: {}

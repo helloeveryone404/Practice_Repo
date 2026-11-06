@@ -16,6 +16,7 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false   # the script never calls the Kubernetes API, so don't mount an API token
           securityContext:
             runAsNonRoot: true
             runAsUser: 999         # test_user
@@ -46,8 +47,10 @@ spec:
                 requests:
                   cpu: 100m
                   memory: 128Mi
+                  ephemeral-storage: 50Mi
                 limits:
                   memory: 256Mi
+                  ephemeral-storage: 100Mi
           volumes:
             - name: data
               emptyDir: {}

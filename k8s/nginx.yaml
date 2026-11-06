@@ -22,6 +22,7 @@ spec:
       labels:
         app: nginx-practice
     spec:
+      automountServiceAccountToken: false   # nginx never calls the Kubernetes API, so don't mount an API token
       containers:
         - name: nginx
           image: nginx:1.30.6-alpine
@@ -37,8 +38,10 @@ spec:
             requests:
               cpu: 50m
               memory: 32Mi
+              ephemeral-storage: 50Mi
             limits:
               memory: 64Mi
+              ephemeral-storage: 100Mi
 ---
 apiVersion: v1
 kind: Service
