@@ -12,3 +12,10 @@ summary.csv
 
 # Local secrets
 .env
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
