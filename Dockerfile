@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Install dependencies first so this layer is cached until the lockfile changes
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project --no-build
 
 COPY APIpractice.py ./
 
