@@ -2,6 +2,7 @@
 
 import os
 import statistics
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
@@ -205,7 +206,7 @@ def describe_request_error(error):
 # --- Entry point ----------------------------------------------------------------
 
 def main(repo=DEFAULT_REPO, output_path=OUTPUT_PATH, days=LOOKBACK_DAYS, min_runs=MIN_RUNS, now=None):
-    """Fetch repo's recent runs, print the report, and write the CSV summary to output_path."""
+    """Fetch repo's recent runs, print the report, and write the CSV to output_path; return 0, or 1 if a request failed."""
     load_environment()
     token = get_token(os.environ)
     cutoff_date = compute_cutoff_date(now or datetime.now(), days)
@@ -227,7 +228,9 @@ def main(repo=DEFAULT_REPO, output_path=OUTPUT_PATH, days=LOOKBACK_DAYS, min_run
         write_text(output_path, build_csv_text(comparison))
     except requests.exceptions.RequestException as e:
         print(describe_request_error(e))
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
