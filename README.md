@@ -7,7 +7,7 @@ A small Python tool, plus the container, pipeline, infrastructure, and Kubernete
 `workflow_run_stats.py` reads the workflow runs of a public repository (`actions/runner`) through the GitHub REST API. It counts successes and failures per workflow file, compares how long successful and failed runs take, and writes `summary.csv`. It needs a `GITHUB_TOKEN` environment variable. A token with no permissions is enough for public data.
 
 Known limits:
-- GitHub returns at most 1,000 results per filtered query, so on a busy repo the 90 day window is cut short. The fix is to split the date range into chunks.
+- GitHub returns at most 1,000 results per filtered query, so on a busy repo the 90 day window is cut short. The tool prints a warning when this happens. The fix is to split the date range into chunks.
 - Durations come from `updated_at`, which is only an approximate end time. Runs that were closed in bulk show very long durations.
 
 ## What is where
