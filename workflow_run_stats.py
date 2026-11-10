@@ -19,6 +19,7 @@ DEFAULT_REPO = "actions/runner"
 LOOKBACK_DAYS = 90
 OUTPUT_PATH = "summary.csv"
 CSV_HEADER = ["Path", "OK runs", "Fail runs", "Med OK", "Med Fail", "Fail/OK"]
+API_RESULT_CAP = 1000  # GitHub returns at most this many results per filtered query
 
 
 # --- Input/output: thin wrappers that tests can replace -----------------------
@@ -45,16 +46,19 @@ def create_retry_session():
 
 
 def fetch_all_runs(session, url, headers):
-    """Fetch every page of workflow runs starting at url and return them as one list."""
+    """Fetch every page of workflow runs starting at url; return (runs, total_count reported by the API or None)."""
     all_runs = []
+    total_count = None
     while url:
         response = session.get(url, headers=headers, timeout=(3.05, 10))
         response.raise_for_status()
         data = response.json()
+        if total_count is None:
+            total_count = data.get("total_count")
         all_runs.extend(data["workflow_runs"])
         url = response.links.get("next", {}).get("url")
         print(f"Total so far: {len(all_runs)}")
-    return all_runs
+    return all_runs, total_count
 
 
 def write_text(path, text):
@@ -196,6 +200,18 @@ def build_csv_text(comparison):
     return buffer.getvalue()
 
 
+def build_truncation_warning(total_count, fetched_count):
+    """Return a warning if the API reported more runs than were fetched or the fetch hit API_RESULT_CAP, else None."""
+    if total_count is not None and total_count > fetched_count:
+        detail = f"GitHub reported {total_count:,} matching runs but returned only {fetched_count:,}"
+    elif fetched_count >= API_RESULT_CAP:
+        detail = f"GitHub returned {fetched_count:,} runs, which reaches its result cap"
+    else:
+        return None
+    return (f"WARNING: {detail} (the API returns at most {API_RESULT_CAP:,} results per query); "
+            f"the oldest runs in the window may be missing.")
+
+
 def describe_request_error(error):
     """Return the message to print for a failed request: rate-limit details or the error text."""
     if isinstance(error, requests.exceptions.HTTPError):
@@ -216,11 +232,14 @@ def main(repo=DEFAULT_REPO, output_path=OUTPUT_PATH, days=LOOKBACK_DAYS, min_run
     print(f"Cutoff date for runs: {cutoff_date}")
     session = create_retry_session()
     try:
-        all_runs = fetch_all_runs(session, build_runs_url(repo, cutoff_date), build_headers(token))
+        all_runs, total_count = fetch_all_runs(session, build_runs_url(repo, cutoff_date), build_headers(token))
         oldest_date = find_oldest_date(all_runs)
         summary, duration_times = summarize_conclusions_by_path(all_runs)
         times, long_failures = collect_success_failure_times(all_runs, LONG_FAILURE_SECONDS)
         print(f"Oldest run date: {oldest_date} Total runs retrieved: {len(all_runs)}")
+        warning = build_truncation_warning(total_count, len(all_runs))
+        if warning:
+            print(warning)
         for line in format_conclusion_lines(summary, duration_times):
             print(line)
         for message in long_failures:
