@@ -4,7 +4,7 @@ A small Python tool, plus the container, pipeline, infrastructure, and Kubernete
 
 ## What the tool does
 
-`APIpractice.py` reads the workflow runs of a public repository (`actions/runner`) through the GitHub REST API. It counts successes and failures per workflow file, compares how long successful and failed runs take, and writes `summary.csv`. It needs a `GITHUB_TOKEN` environment variable. A token with no permissions is enough for public data.
+`workflow_run_stats.py` reads the workflow runs of a public repository (`actions/runner`) through the GitHub REST API. It counts successes and failures per workflow file, compares how long successful and failed runs take, and writes `summary.csv`. It needs a `GITHUB_TOKEN` environment variable. A token with no permissions is enough for public data.
 
 Known limits:
 - GitHub returns at most 1,000 results per filtered query, so on a busy repo the 90 day window is cut short. The fix is to split the date range into chunks.
@@ -14,7 +14,7 @@ Known limits:
 
 | Path | What it is |
 |---|---|
-| `APIpractice.py`, `pyproject.toml`, `uv.lock` | The tool and its locked dependencies (managed with `uv`) |
+| `workflow_run_stats.py`, `pyproject.toml`, `uv.lock` | The tool and its locked dependencies (managed with `uv`) |
 | `Dockerfile` | Container image: Python slim, dependencies from the lock file, runs as a non-root user |
 | `.github/workflows/push_to_GHCR.yml` | Builds the image, scans it with Trivy, and pushes it to GHCR on pushes to `main` and manual runs |
 | `.github/copilot-instructions.md` | Example custom instructions for GitHub Copilot |
@@ -27,7 +27,7 @@ Known limits:
 ```
 uv sync
 export GITHUB_TOKEN=<your token>
-uv run python APIpractice.py
+uv run python workflow_run_stats.py
 ```
 
 In Docker:

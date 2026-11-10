@@ -5,7 +5,7 @@ A small Python tool that reads GitHub Actions workflow runs through the GitHub R
 
 ## Stack and commands
 - Python 3.14. Dependencies are managed with uv (`pyproject.toml` and `uv.lock`). Use `uv add` and `uv sync`, not pip.
-- The main script is `APIpractice.py`. Run it with `uv run python APIpractice.py` after `GITHUB_TOKEN` is set in the environment.
+- The main script is `workflow_run_stats.py`. Run it with `uv run python workflow_run_stats.py` after `GITHUB_TOKEN` is set in the environment.
 - Tests, when present, use pytest and live in `tests/`. Run them with `uv run pytest`.
 - HTTP calls use `requests` with a retry session. Keep timeouts and `raise_for_status()` on every request.
 
