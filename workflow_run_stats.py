@@ -131,7 +131,8 @@ def summarize_conclusions_by_path(runs):
 
 
 def format_conclusion_lines(summary, duration_times):
-    """Return one 'Path: ...' report line per path, sorted by path name; the median is 'n/a' when a path has no durations."""
+    """Return one 'Path: ...' report line per path, sorted by path name; the median is 'n/a' when a path has no
+    durations, and Total Runs counts every finished run (all conclusions) for the path."""
     lines = []
     for path, conclusions in sorted(summary.items(), key=lambda item: item[0]):
         durations = duration_times.get(path, [])
@@ -142,7 +143,7 @@ def format_conclusion_lines(summary, duration_times):
         else:
             median = statistics.median(durations)
             median_duration = f"{median / 60:.2f} minutes" if median > 60 else f"{median} seconds"
-        lines.append(f"Path: {path}, Success: {conclusions['success']}, Failure: {conclusions['failure']}, Action Required: {conclusions['action_required']}, Fail Rate: {fail_rate:.2f}%, Median Duration: {median_duration}, Total Runs: {len(durations)}")
+        lines.append(f"Path: {path}, Success: {conclusions['success']}, Failure: {conclusions['failure']}, Action Required: {conclusions['action_required']}, Fail Rate: {fail_rate:.2f}%, Median Duration: {median_duration}, Total Runs: {sum(conclusions.values())}")
     return lines
 
 
