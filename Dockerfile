@@ -15,7 +15,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project --no-build
 
-COPY APIpractice.py ./
+COPY workflow_run_stats.py ./
 
 ENV PATH="/app/.venv/bin:$PATH"
 
@@ -24,4 +24,4 @@ WORKDIR /data
 
 USER test_user
 
-CMD ["python", "/app/APIpractice.py"]
+CMD ["python", "/app/workflow_run_stats.py"]
