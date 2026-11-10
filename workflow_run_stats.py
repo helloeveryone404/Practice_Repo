@@ -124,9 +124,9 @@ def summarize_conclusions_by_path(runs):
 
 
 def format_conclusion_lines(summary, duration_times):
-    """Return one 'Path: ...' report line per path, ordered as the original script ordered them."""
+    """Return one 'Path: ...' report line per path, sorted by path name."""
     lines = []
-    for path, conclusions in sorted(summary.items(), key=lambda x: duration_times.get(x[0], [])):
+    for path, conclusions in sorted(summary.items(), key=lambda item: item[0]):
         durations = duration_times.get(path, [])
         done = conclusions["success"] + conclusions["failure"]
         fail_rate = (conclusions["failure"] / done) * 100 if done > 0 else 0
