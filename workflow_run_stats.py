@@ -1,5 +1,7 @@
 """Report GitHub Actions run statistics for a repository and write a CSV summary."""
 
+import csv
+import io
 import os
 import statistics
 import sys
@@ -16,7 +18,7 @@ LONG_FAILURE_SECONDS = 86400  # failures longer than a day are listed individual
 DEFAULT_REPO = "actions/runner"
 LOOKBACK_DAYS = 90
 OUTPUT_PATH = "summary.csv"
-CSV_HEADER = "Path,OK runs,Fail runs,Med OK,Med Fail,Fail/OK\n"
+CSV_HEADER = ["Path", "OK runs", "Fail runs", "Med OK", "Med Fail", "Fail/OK"]
 
 
 # --- Input/output: thin wrappers that tests can replace -----------------------
@@ -182,15 +184,16 @@ def format_comparison_lines(comparison):
 
 
 def build_csv_text(comparison):
-    """Return the full CSV text (header plus one row per path) for the comparison."""
-    lines = [CSV_HEADER]
+    """Return the CSV text (header plus one row per path); values with commas or quotes are quoted, missing values are empty."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(CSV_HEADER)
     for path, ok_count, bad_count, med_ok, med_bad, ratio in comparison:
-        row = [path, ok_count, bad_count,
-               round(med_ok, 2) if med_ok is not None else ' ',
-               round(med_bad, 2) if med_bad is not None else ' ',
-               round(ratio, 2) if ratio is not None else ' ']
-        lines.append(",".join(str(x) for x in row) + "\n")
-    return "".join(lines)
+        writer.writerow([path, ok_count, bad_count,
+                         round(med_ok, 2) if med_ok is not None else "",
+                         round(med_bad, 2) if med_bad is not None else "",
+                         round(ratio, 2) if ratio is not None else ""])
+    return buffer.getvalue()
 
 
 def describe_request_error(error):
