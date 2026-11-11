@@ -7,3 +7,20 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "requests>=2.34.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["workflow_run_stats"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true

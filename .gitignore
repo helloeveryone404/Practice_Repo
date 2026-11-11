@@ -19,3 +19,9 @@ summary.csv
 *.tfstate.*
 *.tfvars
 crash.log
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
