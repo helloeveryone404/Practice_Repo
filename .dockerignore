@@ -5,3 +5,11 @@ __pycache__
 *.py[oc]
 .env
 *.csv
+infra
+k8s
+.github
+README.md
+.pytest_cache
+.coverage
+htmlcov
+tests
