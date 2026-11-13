@@ -47,7 +47,7 @@ def create_retry_session():
 
 
 def fetch_all_runs(session, url, headers):
-    """Fetch every page of workflow runs starting at url; return (runs, total_count reported by the API or None)."""
+    """Fetch pages of workflow runs from url until no next page or API_RESULT_CAP runs; return (runs, total_count or None)."""
     all_runs = []
     total_count = None
     while url:
@@ -57,7 +57,8 @@ def fetch_all_runs(session, url, headers):
         if total_count is None:
             total_count = data.get("total_count")
         all_runs.extend(data["workflow_runs"])
-        url = response.links.get("next", {}).get("url")
+        # GitHub serves nothing past API_RESULT_CAP but can still send a "next" link to an empty page
+        url = response.links.get("next", {}).get("url") if len(all_runs) < API_RESULT_CAP else None
         print(f"Total so far: {len(all_runs)}")
     return all_runs, total_count
 
