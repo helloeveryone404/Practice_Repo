@@ -47,7 +47,7 @@ def create_retry_session():
 
 
 def fetch_all_runs(session, url, headers):
-    """Fetch every page of workflow runs starting at url; return (runs, total_count reported by the API or None)."""
+    """Fetch pages of workflow runs from url until no next page or API_RESULT_CAP runs; return (runs, total_count or None)."""
     all_runs = []
     total_count = None
     while url:
@@ -57,9 +57,26 @@ def fetch_all_runs(session, url, headers):
         if total_count is None:
             total_count = data.get("total_count")
         all_runs.extend(data["workflow_runs"])
-        url = response.links.get("next", {}).get("url")
+        # GitHub serves nothing past API_RESULT_CAP but can still send a "next" link to an empty page
+        url = response.links.get("next", {}).get("url") if len(all_runs) < API_RESULT_CAP else None
         print(f"Total so far: {len(all_runs)}")
     return all_runs, total_count
+
+
+def drop_failures_without_jobs(session, headers, runs, repo, long_failure_seconds):
+    """Return (kept runs, skipped count), skipping failures longer than long_failure_seconds whose jobs total_count is 0."""
+    kept_runs = []
+    skipped_count = 0
+    for run in runs:
+        duration = get_duration(run)
+        if run["conclusion"] == "failure" and duration is not None and duration > long_failure_seconds:
+            response = session.get(build_jobs_url(repo, run["id"]), headers=headers, timeout=(3.05, 10))
+            response.raise_for_status()
+            if response.json().get("total_count") == 0:
+                skipped_count += 1
+                continue
+        kept_runs.append(run)
+    return kept_runs, skipped_count
 
 
 def write_text(path, text):
@@ -91,6 +108,11 @@ def compute_cutoff_date(now, days):
 def build_runs_url(repo, cutoff_date):
     """Return the first-page URL for repo's main-branch runs created on or after cutoff_date."""
     return f"https://api.github.com/repos/{repo}/actions/runs?branch=main&per_page=100&created=>=" + cutoff_date
+
+
+def build_jobs_url(repo, run_id):
+    """Return the URL that lists every job (all attempts) of run_id in repo, up to 100 per page."""
+    return f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?filter=all&per_page=100"
 
 
 def get_duration(run):
@@ -231,14 +253,17 @@ def build_truncation_warning(total_count, fetched_count):
             f"the oldest runs in the window may be missing.")
 
 
-def build_report_lines(totals, run_count, total_count, comparison):
-    """Return the report lines printed after fetching, in order: totals, cap warning, per-path lines, long failures, table."""
+def build_report_lines(totals, run_count, total_count, comparison, skipped_count=0):
+    """Return the report lines printed after fetching, in order: totals, cap warning, per-path lines, long failures,
+    skipped count (only if above 0), table."""
     lines = [f"Oldest run date: {totals.oldest_date} Total runs retrieved: {run_count}"]
     warning = build_truncation_warning(total_count, run_count)
     if warning:
         lines.append(warning)
     lines.extend(format_conclusion_lines(totals.summary, totals.duration_times))
     lines.extend(totals.long_failures)
+    if skipped_count > 0:
+        lines.append(f"Skipped {skipped_count} failed runs with no jobs")
     lines.extend(format_comparison_lines(comparison))
     return lines
 
@@ -263,10 +288,12 @@ def main(repo=DEFAULT_REPO, output_path=OUTPUT_PATH, days=LOOKBACK_DAYS, min_run
     print(f"Cutoff date for runs: {cutoff_date}")
     session = create_retry_session()
     try:
-        all_runs, total_count = fetch_all_runs(session, build_runs_url(repo, cutoff_date), build_headers(token))
-        totals = analyze_runs(all_runs, LONG_FAILURE_SECONDS)
+        headers = build_headers(token)
+        all_runs, total_count = fetch_all_runs(session, build_runs_url(repo, cutoff_date), headers)
+        kept_runs, skipped_count = drop_failures_without_jobs(session, headers, all_runs, repo, LONG_FAILURE_SECONDS)
+        totals = analyze_runs(kept_runs, LONG_FAILURE_SECONDS)
         comparison = build_comparison(totals.times, min_runs)
-        for line in build_report_lines(totals, len(all_runs), total_count, comparison):
+        for line in build_report_lines(totals, len(all_runs), total_count, comparison, skipped_count):
             print(line)
         write_text(output_path, build_csv_text(comparison))
     except requests.exceptions.RequestException as e:

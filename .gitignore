@@ -9,6 +9,7 @@ summary.csv
 
 # Virtual environments
 .venv
+.claude/
 
 # Local secrets
 .env
