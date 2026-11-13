@@ -6,6 +6,7 @@ import os
 import statistics
 import sys
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import requests
@@ -105,29 +106,62 @@ def get_duration(run):
     return None
 
 
-def find_oldest_date(runs):
-    """Return the earliest created_at among runs as a datetime, or None if no run has one."""
-    oldest = None
-    for run in runs:
-        start_time = run.get("created_at")
-        if start_time:
-            start_dt = datetime.fromisoformat(start_time)
-            if oldest is None or start_dt < oldest:
-                oldest = start_dt
-    return oldest
+@dataclass
+class RunTotals:
+    """Running totals that analyze_runs builds up one run at a time."""
+    oldest_date: datetime | None = None
+    summary: defaultdict = field(default_factory=lambda: defaultdict(Counter))  # path -> Counter of conclusions
+    duration_times: defaultdict = field(default_factory=lambda: defaultdict(list))  # path -> durations in seconds
+    times: defaultdict = field(default_factory=lambda: defaultdict(list))  # (path, conclusion) -> durations in minutes
+    long_failures: list = field(default_factory=list)  # messages for failures longer than the threshold
 
 
-def summarize_conclusions_by_path(runs):
-    """Return (conclusion Counter per path, list of durations in seconds per path)."""
-    summary = defaultdict(Counter)
-    duration_times = defaultdict(list)
-    for run in runs:
+def update_oldest_date(totals, run):
+    """Set totals.oldest_date to run's created_at if that is earlier than the current value."""
+    start_time = run.get("created_at")
+    if not start_time:
+        return
+    start_dt = datetime.fromisoformat(start_time)
+    if totals.oldest_date is None or start_dt < totals.oldest_date:
+        totals.oldest_date = start_dt
+
+
+def add_conclusion(totals, run, duration):
+    """Record run's duration (if any) and its conclusion (if finished) under its path in totals."""
+    if duration is not None:
+        totals.duration_times[run["path"]].append(duration)
+    if run["conclusion"] is not None:
+        totals.summary[run["path"]][run["conclusion"]] += 1
+
+
+def build_long_failure_message(run, duration):
+    """Return the message printed for a failed run that took duration seconds, longer than the long-failure threshold."""
+    return (f"Failure: {run['path']} with duration {duration / 60:.2f} minutes, "
+            f"run ID: {run['id']}, URL: {run['html_url']}, "
+            f"created at: {run['created_at']}, updated at: {run['updated_at']}, "
+            f"head_sha: {run['head_sha']}, run_started_at: {run['run_started_at']}")
+
+
+def add_success_failure_time(totals, run, duration, long_failure_seconds):
+    """Record a success or failure run's duration in minutes in totals, and a message if it is a long failure."""
+    if run["conclusion"] not in ("success", "failure"):
+        return
+    if duration is None:
+        return
+    totals.times[(run["path"], run["conclusion"])].append(duration / 60)
+    if run["conclusion"] == "failure" and duration > long_failure_seconds:
+        totals.long_failures.append(build_long_failure_message(run, duration))
+
+
+def analyze_runs(all_runs, long_failure_seconds):
+    """Loop over all_runs once and return the RunTotals built from them."""
+    totals = RunTotals()
+    for run in all_runs:
         duration = get_duration(run)
-        if duration is not None:
-            duration_times[run["path"]].append(duration)
-        if run["conclusion"] is not None:
-            summary[run["path"]][run["conclusion"]] += 1
-    return summary, duration_times
+        update_oldest_date(totals, run)
+        add_conclusion(totals, run, duration)
+        add_success_failure_time(totals, run, duration, long_failure_seconds)
+    return totals
 
 
 def format_conclusion_lines(summary, duration_times):
@@ -145,22 +179,6 @@ def format_conclusion_lines(summary, duration_times):
             median_duration = f"{median / 60:.2f} minutes" if median > 60 else f"{median} seconds"
         lines.append(f"Path: {path}, Success: {conclusions['success']}, Failure: {conclusions['failure']}, Action Required: {conclusions['action_required']}, Fail Rate: {fail_rate:.2f}%, Median Duration: {median_duration}, Total Runs: {sum(conclusions.values())}")
     return lines
-
-
-def collect_success_failure_times(runs, long_failure_seconds):
-    """Return (durations in minutes per (path, conclusion), messages for failures over the threshold)."""
-    times = defaultdict(list)
-    long_failures = []
-    for run in runs:
-        if run["conclusion"] not in ("success", "failure"):
-            continue
-        seconds = get_duration(run)
-        if seconds is None:
-            continue
-        times[(run["path"], run["conclusion"])].append(seconds / 60)
-        if run["conclusion"] == "failure" and seconds > long_failure_seconds:
-            long_failures.append(f"Failure: {run['path']} with duration {seconds / 60:.2f} minutes, run ID: {run['id']}, URL: {run['html_url']}, created at: {run['created_at']}, updated at: {run['updated_at']}, head_sha: {run['head_sha']}, run_started_at: {run['run_started_at']}")
-    return times, long_failures
 
 
 def build_comparison(times, min_runs):
@@ -213,6 +231,18 @@ def build_truncation_warning(total_count, fetched_count):
             f"the oldest runs in the window may be missing.")
 
 
+def build_report_lines(totals, run_count, total_count, comparison):
+    """Return the report lines printed after fetching, in order: totals, cap warning, per-path lines, long failures, table."""
+    lines = [f"Oldest run date: {totals.oldest_date} Total runs retrieved: {run_count}"]
+    warning = build_truncation_warning(total_count, run_count)
+    if warning:
+        lines.append(warning)
+    lines.extend(format_conclusion_lines(totals.summary, totals.duration_times))
+    lines.extend(totals.long_failures)
+    lines.extend(format_comparison_lines(comparison))
+    return lines
+
+
 def describe_request_error(error):
     """Return the message to print for a failed request: rate-limit details or the error text."""
     if isinstance(error, requests.exceptions.HTTPError):
@@ -234,19 +264,9 @@ def main(repo=DEFAULT_REPO, output_path=OUTPUT_PATH, days=LOOKBACK_DAYS, min_run
     session = create_retry_session()
     try:
         all_runs, total_count = fetch_all_runs(session, build_runs_url(repo, cutoff_date), build_headers(token))
-        oldest_date = find_oldest_date(all_runs)
-        summary, duration_times = summarize_conclusions_by_path(all_runs)
-        times, long_failures = collect_success_failure_times(all_runs, LONG_FAILURE_SECONDS)
-        print(f"Oldest run date: {oldest_date} Total runs retrieved: {len(all_runs)}")
-        warning = build_truncation_warning(total_count, len(all_runs))
-        if warning:
-            print(warning)
-        for line in format_conclusion_lines(summary, duration_times):
-            print(line)
-        for message in long_failures:
-            print(message)
-        comparison = build_comparison(times, min_runs)
-        for line in format_comparison_lines(comparison):
+        totals = analyze_runs(all_runs, LONG_FAILURE_SECONDS)
+        comparison = build_comparison(totals.times, min_runs)
+        for line in build_report_lines(totals, len(all_runs), total_count, comparison):
             print(line)
         write_text(output_path, build_csv_text(comparison))
     except requests.exceptions.RequestException as e:
