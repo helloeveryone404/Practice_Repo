@@ -1,7 +1,9 @@
-name: Build, Test, and Scan
+name: Test and Scan
 
 on:
   push:
+    branches:
+        - main
   pull_request:
   workflow_dispatch:
 
@@ -9,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  build-test-scan:
+  test-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -25,7 +27,7 @@ jobs:
             uv run pytest --cov=workflow_run_stats --cov-branch --cov-report=term-missing --cov-report=xml:/out/coverage.xml
 
       - name: Sonar Scan
-        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16
+        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16  # v8.5.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
@@ -34,4 +36,5 @@ jobs:
             -Dsonar.projectKey=helloeveryone404.Practice_Repo
             -Dsonar.projectName=Practice_Repo
             -Dsonar.tests=tests/
-            -Dsonar.sonar.python.coverage.reportPaths=coverage-out/coverage.xml
+            -Dsonar.exclusions=coverage-out/**
+            -Dsonar.python.coverage.reportPaths=coverage-out/coverage.xml
