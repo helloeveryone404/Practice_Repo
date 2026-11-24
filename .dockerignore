@@ -12,4 +12,3 @@ README.md
 .pytest_cache
 .coverage
 htmlcov
-tests
