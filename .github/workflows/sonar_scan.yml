@@ -1,0 +1,37 @@
+name: Build, Test, and Scan
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-scan-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+            fetch-depth: 0
+
+      - name: Unit Tests
+        run: | 
+            docker build --target test -t practice-tests .
+            mkdir -p coverage-out
+            docker run --rm -v "$PWD/coverage-out:/out" practice-tests \
+            uv run pytest --cov=workflow_run_stats --cov-branch --cov-report=term-missing --cov-report=xml:/out/coverage.xml
+
+      - name: Sonar Scan
+        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=helloeveryone404
+            -Dsonar.projectKey=helloeveryone404.Practice_Repo
+            -Dsonar.projectName=Practice_Repo
+            -Dsonar.tests=tests/
+            -Dsonar.sonar.python.coverage.reportPaths=coverage-out/coverage.xml
