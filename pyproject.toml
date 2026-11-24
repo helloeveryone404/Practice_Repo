@@ -21,6 +21,7 @@ pythonpath = ["."]
 [tool.coverage.run]
 source = ["workflow_run_stats"]
 branch = true
+relative_files = true
 
 [tool.coverage.report]
 show_missing = true
