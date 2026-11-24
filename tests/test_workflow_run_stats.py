@@ -1,5 +1,8 @@
 from datetime import datetime, UTC
+from collections import Counter
 import pytest
+import types
+import requests
 from workflow_run_stats import (
     RunTotals,
     build_headers,
@@ -13,7 +16,16 @@ from workflow_run_stats import (
     build_long_failure_message,
     build_truncation_warning,
     add_success_failure_time,
-    write_text
+    write_text,
+    build_csv_text,
+    format_comparison_lines,
+    analyze_runs,
+    build_comparison,
+    build_report_lines,
+    format_comparison_lines,
+    format_conclusion_lines,
+    describe_request_error,
+    drop_failures_without_jobs,
 )
 
 
@@ -177,3 +189,136 @@ def test_write_text(tmp_path):
     write_text(tmp_file, 'test_text_second')
     result2 = tmp_file.read_text(encoding="utf-8")
     assert result2 == "test_text_second"
+
+@pytest.mark.parametrize("comparison, expected",[
+    pytest.param([("a.yml", 10, 4, 2.5, 7.5, 3.14149),("b.yml", 2, 0, 2.334, 5.789, 6.781)], "Path,OK runs,Fail runs,Med OK,Med Fail,Fail/OK\na.yml,10,4,2.5,7.5,3.14\nb.yml,2,0,2.33,5.79,6.78\n", id="All_values"),
+    pytest.param([("a.yml", 10, None, 2.478, None, 3.14149),("b.yml", 2, 0, 2.964, 2.333, 3.45)], "Path,OK runs,Fail runs,Med OK,Med Fail,Fail/OK\na.yml,10,,2.48,,3.14\nb.yml,2,0,2.96,2.33,3.45\n", id="None_in_row_1"),
+    pytest.param([("a.yml", 10, 7, 5.111, 4.598, 3.14159),("b.yml", None, 0, None, 2.333, None)], "Path,OK runs,Fail runs,Med OK,Med Fail,Fail/OK\na.yml,10,7,5.11,4.6,3.14\nb.yml,,0,,2.33,\n", id="None_in_row_2"),
+    pytest.param([("a.yml", None, None, None, None, None),("b.yml", None, None, None, None, None)], "Path,OK runs,Fail runs,Med OK,Med Fail,Fail/OK\na.yml,,,,,\nb.yml,,,,,\n", id="Path_only_no_values"),
+    pytest.param([("a,b.yml", 3, 7, 3.48, 4.20, 6.77),("b,c,e.yml", 5, 9, 3.88, 5.699, 0)], 'Path,OK runs,Fail runs,Med OK,Med Fail,Fail/OK\n"a,b.yml",3,7,3.48,4.2,6.77\n"b,c,e.yml",5,9,3.88,5.7,0\n', id="Comma_in_path"),
+    pytest.param([],"Path,OK runs,Fail runs,Med OK,Med Fail,Fail/OK\n", id="Empty_list")
+])
+def test_build_csv_text(comparison, expected):
+    assert build_csv_text(comparison) == expected
+
+def test_format_comparison_lines():
+    comparison = [
+        ("a.yml", 10, 4, 2.5, 7.5, 3.0),
+        ("b.yml", 2, 0, None, None, None),
+    ]
+    lines = format_comparison_lines(comparison)
+    assert lines == [
+        "\nPath                                                     OK runs  Fail runs   Med OK  Med Fail  Fail/OK",
+        "a.yml                                                         10          4     2.50      7.50    3.00x",
+        "b.yml                                                          2          0        -         -        -",
+    ]
+
+def test_format_comparison_lines_empty():
+    assert format_comparison_lines([]) == [
+        "\nPath                                                     OK runs  Fail runs   Med OK  Med Fail  Fail/OK"
+    ]
+
+def test_format_conclusion_lines():
+    summary = {
+        "b.yml": Counter(success=3, failure=1, action_required=2),
+        "c.yml": Counter(action_required=1),
+        "a.yml": Counter(success=2, failure=2),
+    }
+    duration_times = {
+        "b.yml": [30, 60, 120],
+        "a.yml": [120, 240],
+    }
+    lines = format_conclusion_lines(summary, duration_times)
+    assert lines == [
+        "Path: a.yml, Success: 2, Failure: 2, Action Required: 0, Fail Rate: 50.00%, Median Duration: 3.00 minutes, Total Runs: 4",
+        "Path: b.yml, Success: 3, Failure: 1, Action Required: 2, Fail Rate: 25.00%, Median Duration: 60 seconds, Total Runs: 6",
+        "Path: c.yml, Success: 0, Failure: 0, Action Required: 1, Fail Rate: 0.00%, Median Duration: n/a, Total Runs: 1",
+    ]
+
+def test_build_comparison():
+    times = {
+        ("c.yml", "failure"): [4, 4, 4],
+        ("a.yml", "success"): [1, 2, 3],
+        ("a.yml", "failure"): [4, 6, 8],
+        ("b.yml", "success"): [1, 2],
+        ("b.yml", "failure"): [5, 5, 5],
+        ("d.yml", "success"): [0, 0, 0],
+        ("d.yml", "failure"): [3, 3, 3],
+    }
+    assert build_comparison(times, 3) == [
+        ("a.yml", 3, 3, 2, 6, 3.0),
+        ("b.yml", 2, 3, None, 5, None),
+        ("c.yml", 0, 3, None, 4, None),
+        ("d.yml", 3, 3, 0, 3, None),
+    ]
+
+def make_totals():
+    totals = RunTotals()
+    totals.oldest_date = datetime(2024, 1, 1, tzinfo=UTC)
+    totals.summary["a.yml"].update({"success": 2, "failure": 1})
+    totals.duration_times["a.yml"] = [60, 120, 180]
+    totals.long_failures.append("Failure: a.yml (long failure message)")
+    return totals
+
+@pytest.mark.parametrize("run_count, total_count, skipped_count, expected_warning, expected_skipped", [
+    pytest.param(500, 500, 0, [], [], id="No_warning_no_skipped"),
+    pytest.param(
+        1000, 1500, 2,
+        ["WARNING: GitHub reported 1,500 matching runs but returned only 1,000 (the API returns at most 1,000 results per query); the oldest runs in the window may be missing."],
+        ["Skipped 2 failed runs with no jobs"],
+        id="Warning_and_skipped",
+    ),
+])
+def test_build_report_lines(run_count, total_count, skipped_count, expected_warning, expected_skipped):
+    totals = make_totals()
+    comparison = [("a.yml", 2, 1, None, None, None)]
+    lines = build_report_lines(totals, run_count, total_count, comparison, skipped_count)
+    assert lines == (
+        [f"Oldest run date: 2024-01-01 00:00:00+00:00 Total runs retrieved: {run_count}"]
+        + expected_warning
+        + ["Path: a.yml, Success: 2, Failure: 1, Action Required: 0, Fail Rate: 33.33%, Median Duration: 2.00 minutes, Total Runs: 3"]
+        + ["Failure: a.yml (long failure message)"]
+        + expected_skipped
+        + format_comparison_lines(comparison)
+    )
+
+def make_run(path, conclusion, created, started, updated, run_id):
+    return {"path": path, "conclusion": conclusion, "id": run_id, "html_url": "https://example.com",
+            "created_at": created, "run_started_at": started, "updated_at": updated, "head_sha": "abc"}
+
+def test_analyze_runs():
+    runs = [
+        make_run("a.yml", "success", "2024-01-02T00:00:00Z", "2024-01-02T00:00:00Z", "2024-01-02T00:01:00Z", 1),
+        make_run("a.yml", "failure", "2024-01-03T00:00:00Z", "2024-01-03T00:00:00Z", "2024-01-03T00:02:00Z", 2),
+        make_run("b.yml", None, "2023-12-31T00:00:00Z", None, "2023-12-31T00:00:30Z", 3),
+    ]
+    totals = analyze_runs(runs, 100)
+    assert totals.oldest_date == datetime(2023, 12, 31, tzinfo=UTC)
+    assert dict(totals.summary) == {"a.yml": {"success": 1, "failure": 1}}
+    assert dict(totals.duration_times) == {"a.yml": [60.0, 120.0]}
+    assert dict(totals.times) == {("a.yml", "success"): [1.0], ("a.yml", "failure"): [2.0]}
+    assert totals.long_failures == [
+        "Failure: a.yml with duration 2.00 minutes, run ID: 2, URL: https://example.com, created at: 2024-01-03T00:00:00Z, updated at: 2024-01-03T00:02:00Z, head_sha: abc, run_started_at: 2024-01-03T00:00:00Z"
+    ]
+
+@pytest.mark.parametrize("message, status_code, headers, expected",[
+    pytest.param("403 Client Error: Forbidden", 403, {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1700000000"}, "Rate limit hit. Resets at epoch 1700000000.", id="Rate_limit"),
+    pytest.param("403 Client Error: Forbidden", 403, {"X-RateLimit-Remaining": "5", "X-RateLimit-Reset": "1700000000"}, "Request failed: 403 Client Error: Forbidden", id="403_not_rate_limit"),
+    pytest.param("500 Internal Server Error", 500, {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1700000000"}, "Request failed: 500 Internal Server Error", id="500_status"),
+    pytest.param("403 Client Error: Forbidden", 403, {"X-RateLimit-Remaining": "0"}, "Rate limit hit. Resets at epoch 0.", id="Missing_reset_key")
+])
+def test_describe_request_error(message, status_code, headers, expected):
+    fake_response = types.SimpleNamespace(status_code=status_code, headers=headers)
+    error = requests.exceptions.HTTPError(message, response=fake_response)
+    test = describe_request_error(error)
+    assert test == expected
+
+def test_describe_request_error_no_response():
+    error = requests.exceptions.HTTPError("ConnectionError", response=None)
+    assert describe_request_error(error) == "Request failed: ConnectionError"
+
+def test_describe_request_error_non_HTTP():
+    error = requests.exceptions.ConnectionError("boom", response=None)
+    assert describe_request_error(error) == "Request failed: boom"
+
+

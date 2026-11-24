@@ -26,3 +26,4 @@ crash.log
 .coverage
 coverage.xml
 htmlcov/
+coverage-out/
