@@ -1,6 +1,8 @@
 from datetime import datetime, UTC
 from collections import Counter
 import pytest
+import types
+import requests
 from workflow_run_stats import (
     RunTotals,
     build_headers,
@@ -22,6 +24,8 @@ from workflow_run_stats import (
     build_report_lines,
     format_comparison_lines,
     format_conclusion_lines,
+    describe_request_error,
+    drop_failures_without_jobs,
 )
 
 
@@ -296,3 +300,25 @@ def test_analyze_runs():
     assert totals.long_failures == [
         "Failure: a.yml with duration 2.00 minutes, run ID: 2, URL: https://example.com, created at: 2024-01-03T00:00:00Z, updated at: 2024-01-03T00:02:00Z, head_sha: abc, run_started_at: 2024-01-03T00:00:00Z"
     ]
+
+@pytest.mark.parametrize("message, status_code, headers, expected",[
+    pytest.param("403 Client Error: Forbidden", 403, {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1700000000"}, "Rate limit hit. Resets at epoch 1700000000.", id="Rate_limit"),
+    pytest.param("403 Client Error: Forbidden", 403, {"X-RateLimit-Remaining": "5", "X-RateLimit-Reset": "1700000000"}, "Request failed: 403 Client Error: Forbidden", id="403_not_rate_limit"),
+    pytest.param("500 Internal Server Error", 500, {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1700000000"}, "Request failed: 500 Internal Server Error", id="500_status"),
+    pytest.param("403 Client Error: Forbidden", 403, {"X-RateLimit-Remaining": "0"}, "Rate limit hit. Resets at epoch 0.", id="Missing_reset_key")
+])
+def test_describe_request_error(message, status_code, headers, expected):
+    fake_response = types.SimpleNamespace(status_code=status_code, headers=headers)
+    error = requests.exceptions.HTTPError(message, response=fake_response)
+    test = describe_request_error(error)
+    assert test == expected
+
+def test_describe_request_error_no_response():
+    error = requests.exceptions.HTTPError("ConnectionError", response=None)
+    assert describe_request_error(error) == "Request failed: ConnectionError"
+
+def test_describe_request_error_non_HTTP():
+    error = requests.exceptions.ConnectionError("boom", response=None)
+    assert describe_request_error(error) == "Request failed: boom"
+
+
