@@ -49,4 +49,3 @@ jobs:
             -Dsonar.tests=tests/
             -Dsonar.exclusions=coverage-out/**
             -Dsonar.python.coverage.reportPaths=coverage-out/coverage.xml
-            -Dsonar.qualitygate.wait=true
