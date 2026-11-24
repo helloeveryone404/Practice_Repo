@@ -30,13 +30,12 @@ jobs:
         if: github.ref_name == github.event.repository.default_branch
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_PROJECT_KEY: your-org_your-repo # Replace with your actual project key
         run: |
             SONAR_PROJECT_KEY="${GITHUB_REPOSITORY/\//.}"
             echo "Using Project Key: $SONAR_PROJECT_KEY"
             curl --fail --silent --show-error -X POST \
                 -H "Authorization: Bearer $SONAR_TOKEN" \
-                "https://sonarcloud.io/api/project_branches/rename?project={{SONAR_PROJECT_KEY}}&name={{ github.event.repository.default_branch }}"
+                "https://sonarcloud.io/api/project_branches/rename?project=$SONAR_PROJECT_KEY&name=${{ github.event.repository.default_branch }}"
 
       - name: Sonar Scan
         uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16  # v8.5.1
