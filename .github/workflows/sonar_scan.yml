@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  build-scan-push:
+  build-test-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
