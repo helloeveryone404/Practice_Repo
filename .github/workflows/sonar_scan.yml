@@ -46,6 +46,8 @@ jobs:
             -Dsonar.organization=${{ github.repository_owner }}
             -Dsonar.projectKey=${{ github.repository_owner }}.${{ github.event.repository.name }}
             -Dsonar.projectName=${{ github.event.repository.name }}
+            -Dsonar.sources=.
             -Dsonar.tests=tests/
-            -Dsonar.exclusions=coverage-out/**
+            -Dsonar.exclusions=coverage-out/**,tests/**
+            -Dsonar.python.version=3.14
             -Dsonar.python.coverage.reportPaths=coverage-out/coverage.xml
