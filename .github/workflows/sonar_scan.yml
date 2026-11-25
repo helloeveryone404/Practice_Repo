@@ -23,8 +23,7 @@ jobs:
         run: | 
             docker build --target test -t practice-tests .
             mkdir -p coverage-out
-            docker run --rm -v "$PWD/coverage-out:/out" practice-tests \
-            uv run pytest --cov=workflow_run_stats --cov-branch --cov-report=term-missing --cov-report=xml:/out/coverage.xml
+            docker run --rm -v "$PWD/coverage-out:/out" practice-tests pytest --cov=workflow_run_stats --cov-branch --cov-report=term-missing --cov-report=xml:/out/coverage.xml
 
       - name: Ensure SonarQube Cloud main branch matches repo default
         if: github.ref_name == github.event.repository.default_branch

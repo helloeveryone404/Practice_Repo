@@ -30,7 +30,7 @@ COPY tests/ ./tests/
 COPY workflow_run_stats.py ./
 
 # Exits non-zero if any test fails, so CI can fail on it
-CMD ["uv", "run", "pytest", "--cov=workflow_run_stats", "--cov-branch", "--cov-report=term-missing"]
+CMD ["pytest", "--cov=workflow_run_stats", "--cov-branch", "--cov-report=term-missing"]
 
 
 # ---------- final: the production image (the default build target) ----------
