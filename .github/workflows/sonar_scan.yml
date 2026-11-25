@@ -25,16 +25,38 @@ jobs:
             mkdir -p coverage-out
             docker run --rm -v "$PWD/coverage-out:/out" practice-tests pytest --cov=workflow_run_stats --cov-branch --cov-report=term-missing --cov-report=xml:/out/coverage.xml
 
-      - name: Ensure SonarQube Cloud main branch matches repo default
+      - name: Ensure SonarQube Cloud project exists with the right main branch
         if: github.ref_name == github.event.repository.default_branch
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-            SONAR_PROJECT_KEY="${GITHUB_REPOSITORY/\//.}"
-            echo "Using Project Key: $SONAR_PROJECT_KEY"
+          SONAR_PROJECT_KEY="${GITHUB_REPOSITORY/\//.}"
+          SONAR_ORG="$GITHUB_REPOSITORY_OWNER"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          echo "Using Project Key: $SONAR_PROJECT_KEY"
+
+          found=$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $SONAR_TOKEN" \
+            "https://sonarcloud.io/api/projects/search?organization=$SONAR_ORG&projects=$SONAR_PROJECT_KEY" \
+            | jq -r '.paging.total')
+
+          if [ "$found" = "0" ]; then
+            echo "Project not found. Creating it and renaming its main branch to $DEFAULT_BRANCH"
             curl --fail --silent --show-error -X POST \
-                -H "Authorization: Bearer $SONAR_TOKEN" \
-                "https://sonarcloud.io/api/project_branches/rename?project=$SONAR_PROJECT_KEY&name=${{ github.event.repository.default_branch }}"
+              -H "Authorization: Bearer $SONAR_TOKEN" \
+              --data-urlencode "organization=$SONAR_ORG" \
+              --data-urlencode "project=$SONAR_PROJECT_KEY" \
+              --data-urlencode "name=$REPO_NAME" \
+              "https://sonarcloud.io/api/projects/create"
+            curl --fail --silent --show-error -X POST \
+              -H "Authorization: Bearer $SONAR_TOKEN" \
+              --data-urlencode "project=$SONAR_PROJECT_KEY" \
+              --data-urlencode "name=$DEFAULT_BRANCH" \
+              "https://sonarcloud.io/api/project_branches/rename"
+          else
+            echo "Project already exists. Nothing to do."
+          fi
 
       - name: Sonar Scan
         uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16  # v8.5.1
@@ -50,3 +72,4 @@ jobs:
             -Dsonar.exclusions=coverage-out/**,tests/**
             -Dsonar.python.version=3.14
             -Dsonar.python.coverage.reportPaths=coverage-out/coverage.xml
+            -Dsonar.qualitygate.wait=true
