@@ -42,20 +42,28 @@ jobs:
             | jq -r '.paging.total')
 
           if [ "$found" = "0" ]; then
-            echo "Project not found. Creating it and renaming its main branch to $DEFAULT_BRANCH"
+            echo "Project not found. Creating it."
             curl --fail --silent --show-error -X POST \
               -H "Authorization: Bearer $SONAR_TOKEN" \
               --data-urlencode "organization=$SONAR_ORG" \
               --data-urlencode "project=$SONAR_PROJECT_KEY" \
               --data-urlencode "name=$REPO_NAME" \
               "https://sonarcloud.io/api/projects/create"
+          fi
+
+          main_branch=$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $SONAR_TOKEN" \
+            "https://sonarcloud.io/api/project_branches/list?project=$SONAR_PROJECT_KEY" \
+            | jq -r '.branches[] | select(.isMain) | .name')
+          echo "Main branch in SonarQube Cloud: $main_branch"
+
+          if [ "$main_branch" != "$DEFAULT_BRANCH" ]; then
+            echo "Renaming main branch to $DEFAULT_BRANCH"
             curl --fail --silent --show-error -X POST \
               -H "Authorization: Bearer $SONAR_TOKEN" \
               --data-urlencode "project=$SONAR_PROJECT_KEY" \
               --data-urlencode "name=$DEFAULT_BRANCH" \
               "https://sonarcloud.io/api/project_branches/rename"
-          else
-            echo "Project already exists. Nothing to do."
           fi
 
       - name: Sonar Scan
