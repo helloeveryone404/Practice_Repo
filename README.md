@@ -1,8 +1,6 @@
-# Practice_Repo
-
-# Practice_Repo
-
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=helloeveryone404.Practice_Repo&metric=alert_status&token=3246dda8b5a329cc641b93f501cb5ed0871f62e1)](https://sonarcloud.io/summary/new_code?id=helloeveryone404.Practice_Repo) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=helloeveryone404.Practice_Repo&metric=coverage&token=3246dda8b5a329cc641b93f501cb5ed0871f62e1)](https://sonarcloud.io/summary/new_code?id=helloeveryone404.Practice_Repo)
+
+# Practice_Repo
 
 Report GitHub Actions run statistics ...
 
